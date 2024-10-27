@@ -3,6 +3,10 @@
 
     import {
         Header,
+        HeaderUtilities,
+        HeaderAction,
+        SkipToContent,
+        HeaderSearch,
         Search,
         Content,
         Grid,
@@ -14,12 +18,17 @@
         Slider,
         Tile,
         Pagination,
+        TextInput,
+        Checkbox
     } from "carbon-components-svelte";
-    import Play from "carbon-icons-svelte/lib/Play.svelte";
+    import Play from "carbon-icons-svelte/lib/PlayFilled.svelte";
     import Stop from "carbon-icons-svelte/lib/Stop.svelte";
     import Pause from "carbon-icons-svelte/lib/Pause.svelte";
     import Mute from "carbon-icons-svelte/lib/VolumeMute.svelte";
+    import Next from "carbon-icons-svelte/lib/ArrowRight.svelte";
+    import Prev from "carbon-icons-svelte/lib/ArrowLeft.svelte";
 
+    let isOpen = false;
     let value = "";
     let musics = [];
     let page = 1;
@@ -28,8 +37,11 @@
     let folders = [];
     let libs = [];
     let queue = [];
+    let playlists = [];
+    let libstatus = '';
     let min = 0;
     let max = 0;
+    let isVol = false;
     let nowtime = 0;
     let nowplaying = {
         title: '',
@@ -37,6 +49,9 @@
         artist: '',
         track: ''
     };
+    let addlibpath = '';
+    let addlibrec = true;
+    let saveplaylistpath = '';
 
     async function getMusic() {
         let params = new URLSearchParams();
@@ -112,6 +127,22 @@
         libs = await res.json();
     }
 
+    async function insertLib() {
+        let params = new URLSearchParams();
+        params.append('path', addlibpath);
+        params.append('recursive', (addlibrec ? "1": "0"));
+
+        await fetch('/insertlib.json', {
+            method: 'POST',
+            body: params
+        });
+
+        addlibpath = '';
+        addlibrec = true;
+
+        await getLib();
+    }
+
     async function getQueue() {
         let res = await fetch('/queue.json', {
             method: 'POST'
@@ -136,11 +167,52 @@
         await getQueue();
     }
 
-    async function deleteQueue() {
-        let res = await fetch('/deletequeue.json', {
-            method: 'POST'
+    async function deleteQueue(row) {
+        let params = new URLSearchParams();
+        params.append('id', row.detail.id);
+
+        await fetch('/deletequeue.json', {
+            method: 'POST',
+            body: params
         });
         await getQueue();
+    }
+
+    async function getPlaylist() {
+        fetch('/playlists.json', {
+            method: 'POST'
+        }).then(async function(res) {
+            let json = await res.json();
+            let cnt = 0;
+            for(let l of json) {
+                l.id = cnt;
+                cnt++;
+            }
+            playlists = json;
+        });
+    }
+
+    async function playPlaylist(row) {
+        let params = new URLSearchParams();
+        params.append('path', row.detail.path);
+        params.append('name', row.detail.name);
+
+        fetch('/loadplaylist.json', {
+            method: 'POST',
+            body: params
+        });
+    }
+
+    async function savePlaylist() {
+        let params = new URLSearchParams();
+        params.append('path', saveplaylistpath);
+
+        await fetch('/saveplaylist.json', {
+            method: 'POST',
+            body: params
+        });
+
+        saveplaylistpath = '';
     }
 
     async function resumeMusic() {
@@ -148,7 +220,8 @@
     }
 
     async function stopMusic() {
-        fetch('/stop.json');
+        await fetch('/stop.json');
+        getQueue();
     }
 
     async function pauseMusic() {
@@ -159,19 +232,46 @@
         fetch('/mute.json');
     }
 
+    async function nextMusic() {
+        fetch('/next.json');
+    }
+
+    async function prevMusic() {
+        fetch('/prev.json');
+    }
+
+    async function setVolume(sld) {
+        if(isVol) {
+            isVol = false;
+            let params = new URLSearchParams();
+            params.append('volume', Number(sld.detail));
+
+            fetch('/volume.json', {
+                method: 'POST',
+                body: params
+            });
+
+        } else {
+            isVol = true;
+        }
+    }
+
     function hiddenSliderCnt() {
         let ts = document.querySelectorAll('span.bx--slider__range-label');
         if(ts) {
-            ts.forEach(function(t) {
-                t.style.display = 'none';
-            });
-            let t = document.querySelectorAll('span.bx--slider__range-label')[1];
-            t.insertAdjacentHTML('afterend', '<span class="bx--slider__range-label playtime">0</span>');
+            ts[2].style.display = 'none';
+            ts[3].style.display = 'none';
+            ts[3].insertAdjacentHTML('afterend', '<span class="bx--slider__range-label playtime">0</span>');
         }
     }
 
     function updatePlaytime(val) {
         document.querySelector('span.playtime').innerText = Math.floor(val.duration/60) + ':' + Math.floor(val.duration%60);
+    }
+
+    async function readlib() {
+        fetch('/readlib.json');
+        readLibstatus();
     }
 
     setTimeout(async function() {
@@ -180,7 +280,9 @@
         getLib();
         getMusic();
         getQueue();
+        getPlaylist();
         streamStatus();
+        readLibstatus();
     }, 1000);
 
     function streamStatus() {
@@ -209,7 +311,7 @@
                     artist: '',
                     track: ''
                 };
-
+/*
                 (async function() {
                     if(queue) {
                         await deleteQueue();
@@ -222,13 +324,41 @@
                             });
                         }
                     }
-                })();
+                })();*/
             }
+        });
+    }
+
+    function readLibstatus() {
+        let stream = new EventSource('/readlibstatus');
+        stream.addEventListener('message', function(e) {
+            if(e.data == 'Finalize') {
+                stream.close();
+                return;
+            }
+
+            libstatus = e.data;
         });
     }
 </script>
 
 <Header company="MONOBOX" platformName="Sowver">
+    <svelte:fragment slot="skip-to-content">
+        <SkipToContent />
+    </svelte:fragment>
+    <HeaderUtilities>
+        <HeaderAction bind:isOpen preventCloseOnClickOutside=true>
+            <DataTable
+                zebra
+                size="compact"
+                headers={[
+                    { key: 'id', value: 'ID', width: '20%' },
+                    { key: 'filename', value: 'Path', width: '80%' }
+                ]}
+                rows={queue}
+            />
+        </HeaderAction>
+    </HeaderUtilities>
 </Header>
 
 <Content>
@@ -245,6 +375,7 @@
         <Tab label="Album" />
         <Tab label="Folder" />
         <Tab label="Queue" />
+        <Tab label="Playlist" />
         <Tab label="Library" />
         <svelte:fragment slot="content">
             <TabContent>
@@ -252,13 +383,12 @@
                     sortable
                     zebra
                     size="compact"
-                    stickyHeader
                     headers={[
                     //    { key: "dir", value: "Dir", width: "120px" },
-                        { key: "name", value: "Name", width: "40%" },
-                        { key: "tag_title", value: "Title", width: "40%" },
-                    //    { key: "tag_album", value: "Album", width: "120px" },
-                    //    { key: "tag_artist", value: "Artist", width: "120px" },
+                        { key: "name", value: "Name", width: "30%" },
+                        { key: "tag_title", value: "Title", width: "30%" },
+                        { key: "tag_album", value: "Album", width: "120px" },
+                        { key: "tag_artist", value: "Artist", width: "120px" },
                     //    { key: "tag_track", value: "Track No.", width: "120px" },
                         { key: "like", value: "Like", width: "120px" },
                     ]}
@@ -280,9 +410,9 @@
                     sortable
                     zebra
                     size="compact"
-                    stickyHeader
                     headers={[
-                        { key: "tag_album", value: "Album" }
+                        { key: "tag_album", value: "Album" },
+                        { key: "tag_artist", value: "Artist", width: "120px" },
                     ]}
                     rows={albums}
                 />
@@ -293,7 +423,6 @@
                     sortable
                     zebra
                     size="compact"
-                    stickyHeader
                     headers={[
                         { key: "dir", value: "Dir" }
                     ]}
@@ -305,19 +434,40 @@
                 <DataTable
                     zebra
                     size="compact"
-                    stickyHeader
                     headers={[
                         { key: 'id', value: 'ID', width: '20%' },
-                        { key: 'path', value: 'Path', width: '80%' }
+                        { key: 'filename', value: 'Path', width: '80%' }
                     ]}
                     rows={queue}
+                    on:click:row={deleteQueue}
+                />
+                <Grid>
+                    <Row>
+                        <Column sm={{span: 2}}>
+                            <TextInput hideLabel placeholder="Input save path" bind:value={saveplaylistpath}></TextInput>
+                        </Column>
+                        <Column>
+                            <Button on:click={savePlaylist}>Save Playlist.</Button>
+                        </Column>
+                    </Row>
+                </Grid>
+            </TabContent>
+            <TabContent>
+                <DataTable
+                    zebra
+                    size="compact"
+                    headers={[
+                        { key: 'name', value: 'Name', width: '20%' },
+                        { key: 'path', value: 'Path', width: '60%' }
+                    ]}
+                    rows={playlists}
+                    on:click:row={playPlaylist}
                 />
             </TabContent>
             <TabContent>
                 <DataTable
                     zebra
                     size="compact"
-                    stickyHeader
                     headers={[
                         { key: 'id', value: 'ID', width: '20%' },
                         { key: 'path', value: 'Path', width: '60%' },
@@ -325,17 +475,44 @@
                     ]}
                     rows={libs}
                 />
+                <Grid>
+                    <Row>
+                        <Column sm={{span: 2}}>
+                            <TextInput hideLabel placeholder="Input music path" bind:value={addlibpath}></TextInput>
+                        </Column>
+                        <Column>
+                            <Checkbox labelText="Recursive" bind:checked={addlibrec}></Checkbox>
+                        </Column>
+                        <Column>
+                            <Button on:click={insertLib}>Add Lib.</Button>
+                        </Column>
+                    </Row>
+                </Grid>
+                <Button kind="ghost" on:click={readlib}>Reload Libraly.</Button>
+                <Tile>{libstatus}</Tile>
             </TabContent>
         </svelte:fragment>
         </Tabs>
       </Column>
     </Row>
     <Row>
-        <Column>
+        <Column sm={{span: 1}}>
             <Button size="small" icon={Play} iconDescription="Play Music" tooltipPosition="top" on:click={resumeMusic} />
-            <Button size="small" icon={Stop} iconDescription="Stop Music" tooltipPosition="top" kind="secondary" on:click={stopMusic} />
+            <Button size="small" icon={Prev} iconDescription="Prev Music" tooltipPosition="top" kind="secondary" on:click={prevMusic} />            
+            <Button size="small" icon={Next} iconDescription="Next Music" tooltipPosition="top" kind="secondary" on:click={nextMusic} />            
             <Button size="small" icon={Pause} iconDescription="Pause" tooltipPosition="top" kind="secondary" on:click={pauseMusic} />
             <Button size="small" icon={Mute} iconDescription="Mute" tooltipPosition="top" kind="secondary" on:click={muteMusic} />
+            <Button size="small" icon={Stop} iconDescription="Stop Music" tooltipPosition="top" kind="secondary" on:click={stopMusic} />
+        </Column>
+        <Column sm={{span: 3}}>
+            <Slider
+                min={0}
+                max={100}
+                labelText="Volume"
+                value={50}
+                hideTextInput
+                on:change={setVolume}
+            />
         </Column>
     </Row>
     <Row>
