@@ -27,6 +27,8 @@
     import Mute from "carbon-icons-svelte/lib/VolumeMute.svelte";
     import Next from "carbon-icons-svelte/lib/ArrowRight.svelte";
     import Prev from "carbon-icons-svelte/lib/ArrowLeft.svelte";
+    import Loop from "carbon-icons-svelte/lib/Loop.svelte";
+    import Erase from "carbon-icons-svelte/lib/Erase.svelte";
 
     let isOpen = false;
     let value = "";
@@ -254,6 +256,14 @@
         } else {
             isVol = true;
         }
+    }
+
+    async function loopMusic() {
+        fetch('/loop.json');
+    }
+
+    async function clearloopMusic() {
+        fetch('/clearloop.json');
     }
 
     function hiddenSliderCnt() {
@@ -501,6 +511,8 @@
             <Button size="small" icon={Prev} iconDescription="Prev Music" tooltipPosition="top" kind="secondary" on:click={prevMusic} />            
             <Button size="small" icon={Next} iconDescription="Next Music" tooltipPosition="top" kind="secondary" on:click={nextMusic} />            
             <Button size="small" icon={Pause} iconDescription="Pause" tooltipPosition="top" kind="secondary" on:click={pauseMusic} />
+            <Button size="small" icon={Loop} iconDescription="Loop" tooltipPosition="top" kind="secondary" on:click={loopMusic} />
+            <Button size="small" icon={Erase} iconDescription="Clear Loop" tooltipPosition="top" kind="secondary" on:click={clearloopMusic} />
             <Button size="small" icon={Mute} iconDescription="Mute" tooltipPosition="top" kind="secondary" on:click={muteMusic} />
             <Button size="small" icon={Stop} iconDescription="Stop Music" tooltipPosition="top" kind="secondary" on:click={stopMusic} />
         </Column>
